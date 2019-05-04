@@ -9,7 +9,7 @@ use std::result;
 
 use crate::chunk;
 use crate::crc::Crc32;
-use crate::common::{Info, ColorType, BitDepth, Compression};
+use crate::common::{Info, ColorType, BitDepth, Compression, PixelDimensions, Unit};
 use crate::filter::{FilterType, filter};
 use crate::traits::{WriteBytesExt, HasParameters, Parameter};
 
@@ -60,6 +60,16 @@ impl<W: Write> Encoder<W> {
         info.width = width;
         info.height = height;
         Encoder { w: w, info: info }
+    }
+    
+    pub fn set_pixel_dimensions(&mut self, pixel_dims: PixelDimensions) {
+        self.info.pixel_dims = Some(pixel_dims);
+    }
+    
+    // The lazy version of set_pixel_dimensions
+    pub fn set_dpi(&mut self, dpi: u32) {
+        let ppu = ((dpi as f64) * 39.3700787) as u32;
+        self.set_pixel_dimensions(PixelDimensions{xppu: ppu, yppu: ppu, unit: Unit::Meter})
     }
 
     pub fn write_header(self) -> Result<Writer<W>> {
@@ -117,6 +127,11 @@ impl<W: Write> Writer<W> {
         data[9] = self.info.color_type as u8;
         data[12] = if self.info.interlaced { 1 } else { 0 };
         self.write_chunk(chunk::IHDR, &data)?;
+        if let Some(pixel_dims) = self.info.pixel_dims {
+            let _xppu = pixel_dims.xppu.to_be_bytes();
+            let _yppu = pixel_dims.yppu.to_be_bytes();
+            self.write_chunk(chunk::pHYs, &[_xppu[0], _xppu[1], _xppu[2], _xppu[3], _yppu[0], _yppu[1], _yppu[2], _yppu[3], pixel_dims.unit as u8])?;
+        }
         Ok(self)
     }
 
